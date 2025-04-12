@@ -1,0 +1,99 @@
+/* 背景樣式 */
+:root{
+    background:rgb(183, 154, 154);
+}
+.login-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    background: linear-gradient(to right, #4a90e2, #7b4397);
+}
+
+/* 登入表單 */
+.login-form {
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+    width: 360px;
+    text-align: center;
+}
+
+/* 標題 */
+.login-title {
+    font-size: 24px;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 1rem;
+}
+
+/* 訊息框（成功 & 錯誤） */
+.login-message {
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 14px;
+    margin-bottom: 10px;
+}
+.success {
+    background: #e6f7e6;
+    color: #2e7d32;
+}
+.error {
+    background: #fdecea;
+    color: #d32f2f;
+}
+
+/* 輸入框 */
+.input-group {
+    text-align: left;
+    margin-bottom: 1rem;
+}
+.input-group label {
+    display: block;
+    font-size: 14px;
+    color: #555;
+    margin-bottom: 5px;
+}
+.input-group input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border-color 0.3s;
+}
+.input-group input:focus {
+    border-color: #4a90e2;
+    outline: none;
+}
+
+/* 登入按鈕 */
+.login-button {
+    width: 100%;
+    padding: 10px;
+    font-size: 16px;
+    color: white;
+    background: #4a90e2;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+.login-button:hover {
+    background: #357ae8;
+}
+.login-button.disabled {
+    background: #aaa;
+    cursor: not-allowed;
+}
+
+.link {
+    color: #ff6347; 
+    cursor: pointer; 
+    text-decoration: underline; 
+}
+
+.link:hover {
+    color: #ff4500; 
+}
