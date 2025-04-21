@@ -11,7 +11,7 @@ const path = require('path');
 require("dotenv").config();
 
 const app = express();
-app.use();
+app.use(express.json());
 app.use(cors());
 
 // 建立 MySQL 連線
