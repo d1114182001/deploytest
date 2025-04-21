@@ -6,11 +6,12 @@ const cors = require("cors");
 const bitcore = require("bitcore-lib");
 const Mnemonic = require('bitcore-mnemonic');
 const crypto = require('crypto');
+const path = require('path');
 
 require("dotenv").config();
 
 const app = express();
-app.use(express.json());
+app.use();
 app.use(cors());
 
 // 建立 MySQL 連線
@@ -309,57 +310,120 @@ app.post("/sign-transaction", verifyToken, (req, res) => {
 app.post("/newaddress", (req, res) => {
   const userId = req.body.userId;
 
-  // 查詢 mnemonic
-  const mnemonic_sql = "SELECT id, mnemonic FROM wallets WHERE user_id = ?";
-  db.query(mnemonic_sql, [userId], (err, mnemonicResults) => {
+  // 開始事務
+  db.beginTransaction((err) => {
     if (err) {
-      console.error("查詢 mnemonic 失敗:", err);
-      return res.status(500).json({ error: "查詢 mnemonic 失敗" });
-    }
-    if (mnemonicResults.length === 0) {
-      return res.status(404).json({ error: "未找到用户的錢包助記詞" });
+      console.error("開始事務失敗:", err);
+      return res.status(500).json({ error: "開始事務失敗" });
     }
 
-    const mnemonics = mnemonicResults[0].mnemonic;
-    const walletId = mnemonicResults[0].id;
-    
-    // 查詢上一个地址路徑(假設只有一個HD錢包)
-    const sql = "SELECT paths FROM addresses WHERE user_id = ? ORDER BY id DESC LIMIT 1";
-    db.query(sql, [userId], (err, rows) => {
+    // 查詢 mnemonic
+    const mnemonic_sql = "SELECT id, mnemonic FROM wallets WHERE user_id = ?";
+    db.query(mnemonic_sql, [userId], (err, mnemonicResults) => {
       if (err) {
-        console.error("查詢路徑失敗:", err);
-        return res.status(500).json({ error: "查詢路徑失敗" });
+        console.error("查詢 mnemonic 失敗:", err);
+        return db.rollback(() => {
+          res.status(500).json({ error: "查詢 mnemonic 失敗" });
+        });
+      }
+      if (mnemonicResults.length === 0) {
+        return db.rollback(() => {
+          res.status(404).json({ error: "未找到用戶的錢包助記詞" });
+        });
       }
 
-      const mnemonic = new Mnemonic(mnemonics);
-      const seed = mnemonic.toSeed();
-      const root = bitcore.HDPrivateKey.fromSeed(seed);
+      const mnemonics = mnemonicResults[0].mnemonic;
+      const walletId = mnemonicResults[0].id;
 
-      const currentPath = rows.length > 0 ? rows[0].paths : "m/44'/0'/0'/0/0";
-      const pathParts = currentPath.split('/');
-      const currentIndex = parseInt(pathParts[pathParts.length - 1]);
-      const nextIndex = currentIndex + 1;
-      const newPath = pathParts.slice(0, -1).join('/') + '/' + nextIndex;
-
-      // 生成新地址
-      const derived = root.derive(newPath);
-      const address = derived.privateKey.toAddress().toString();
-      const privatekey = derived.privateKey.toWIF();
-      const publickey = derived.publicKey.toString('hex');
-
-      
-
-      // 儲存到MYSQL
-      const newaddrsql = `
-        INSERT INTO addresses (wallet_id, paths, address, private_key, public_key, user_id) 
-        VALUES (?, ?, ?, ?, ?, ?)
-      `;
-      db.query(newaddrsql, [walletId, newPath, address, privatekey, publickey, userId], (err) => {
+      // 查詢所有現有地址和最新的路徑
+      const sql = "SELECT address, paths FROM addresses WHERE user_id = ? ORDER BY id DESC LIMIT 1";
+      db.query(sql, [userId], (err, rows) => {
         if (err) {
-          console.error("儲存地址失敗:", err);
-          return res.status(500).json({ error: "無法儲存新地址" });
+          console.error("查詢路徑失敗:", err);
+          return db.rollback(() => {
+            res.status(500).json({ error: "查詢路徑失敗" });
+          });
         }
-        res.json({ address });
+
+        const mnemonic = new Mnemonic(mnemonics);
+        const seed = mnemonic.toSeed();
+        const root = bitcore.HDPrivateKey.fromSeed(seed);
+
+        let currentPath = rows.length > 0 ? rows[0].paths : "m/44'/0'/0'/0/0";
+        let pathParts = currentPath.split('/');
+        let currentIndex = parseInt(pathParts[pathParts.length - 1]);
+        let nextIndex = currentIndex + 1;
+        let newPath = pathParts.slice(0, -1).join('/') + '/' + nextIndex;
+        let address;
+        let derived;
+        let privatekey;
+        let publickey;
+
+        // 檢查地址是否已存在
+        const checkAddressExists = () => {
+          return new Promise((resolve, reject) => {
+            db.query("SELECT address FROM addresses WHERE address = ?", [address], (err, results) => {
+              if (err) reject(err);
+              resolve(results.length > 0);
+            });
+          });
+        };
+
+        // 生成唯一地址
+        const generateUniqueAddress = async () => {
+          do {
+            newPath = pathParts.slice(0, -1).join('/') + '/' + nextIndex;
+            derived = root.derive(newPath);
+            address = derived.privateKey.toAddress().toString();
+            privatekey = derived.privateKey.toWIF();
+            publickey = derived.publicKey.toString('hex');
+
+            try {
+              const exists = await checkAddressExists();
+              if (!exists) {
+                return true; // 找到未使用的地址
+              }
+              nextIndex++;
+            } catch (err) {
+              throw err;
+            }
+          } while (true);
+        };
+
+        // 執行地址生成並儲存
+        generateUniqueAddress()
+          .then(() => {
+            // 儲存到 MySQL
+            const newaddrsql = `
+              INSERT INTO addresses (wallet_id, paths, address, private_key, public_key, user_id) 
+              VALUES (?, ?, ?, ?, ?, ?)
+            `;
+            db.query(newaddrsql, [walletId, newPath, address, privatekey, publickey, userId], (err) => {
+              if (err) {
+                console.error("儲存地址失敗:", err);
+                return db.rollback(() => {
+                  res.status(500).json({ error: "無法儲存新地址" });
+                });
+              }
+
+              // 提交事務
+              db.commit((err) => {
+                if (err) {
+                  console.error("提交事務失敗:", err);
+                  return db.rollback(() => {
+                    res.status(500).json({ error: "提交事務失敗" });
+                  });
+                }
+                res.json({ address });
+              });
+            });
+          })
+          .catch((err) => {
+            console.error("生成地址失敗:", err);
+            db.rollback(() => {
+              res.status(500).json({ error: "生成地址失敗" });
+            });
+          });
       });
     });
   });
@@ -558,8 +622,12 @@ app.get('/extract-transactions', (req, res) => {
   });
 });
 
+app.get('/', (req, res) => {
+  res.send('Hello World!')
+});
 
 // 啟動伺服器
 app.listen(3001, () => {
   console.log('服務器運行在 http://localhost:3001');
 });
+module.exports = db;
