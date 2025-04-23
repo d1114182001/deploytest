@@ -11,8 +11,8 @@ const path = require('path');
 require("dotenv").config();
 
 const app = express();
-app.use();
-app.use(cors());
+app.use(express.json());
+app.use(cors({ origin:'https://deploytest-f.onrender.com'}));
 
 // 建立 MySQL 連線
 const db = mysql.createConnection({
@@ -21,6 +21,14 @@ const db = mysql.createConnection({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+});
+
+console.log('DB Config:', {
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
 });
 
 db.connect((err) => {
